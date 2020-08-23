@@ -29,7 +29,7 @@ class Storage:
     def _write_json(self, data):
         """Write given json formatted data to the file."""
         with open(self.file_name, "w") as file_object:
-            json.dump(data, file_object, indent=4) 
+            json.dump(data, file_object, indent=4)
 
     def save(self, response):
         """Writes the given response dict to a json file.
@@ -45,4 +45,4 @@ class Storage:
 
 if __name__ == "__main__":
     store = Storage()
-    store.save({'moie':'moi'})
+    store.save({'moie': 'moi'})
