@@ -4,7 +4,7 @@ import boto3
 from response_storage import Storage
 
 class GlacierLib:
-    def __init__(self, vault_name, region_name="eu-west-1"):
+    def __init__(self, vault_name, region_name="eu-west-1", storage_file="uploaded.json"):
         """Uploads files to the specified AWS Glacier vault.
 
         Args:
@@ -13,7 +13,7 @@ class GlacierLib:
         """
         self.client = boto3.client('glacier', region_name=region_name)
         self.vault_name = vault_name
-        self.storage = Storage()
+        self.storage = Storage(file_name=storage_file)
 
     def upload(self, files, description):
         """Initiates the upload process for the provided files.
