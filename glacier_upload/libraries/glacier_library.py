@@ -2,6 +2,8 @@ import os.path
 import boto3
 from botocore.utils import calculate_tree_hash
 from response_storage import Storage
+from helpers import get_total_size
+
 
 class GlacierLib:
     def __init__(self, vault_name, region_name="eu-west-1", storage_file="uploaded.json"):
@@ -22,27 +24,28 @@ class GlacierLib:
             files (list): Path to each file
             description (str): Description of what is being uploaded
         """
-        if self.ready_for_upload(files):
+        if self._is_ready_for_upload(files):
             if len(files) > 1:
-                pass
+                files = self._calculate_hashes(files)
+                total_size = get_total_size(files)
             else:
                 self._start_upload(files, description)
 
-    def ready_for_upload(self, files):
-        """Checks that everything is ready for the upload to begin."""
+    def _is_ready_for_upload(self, files):
         status = [
             self._check_if_all_files_exist(files),
-            # self._check_if_vault_exists(self.vault_name),
+            self._check_if_vault_exists(self.vault_name),
         ]
         return all(status)
 
     def _check_if_all_files_exist(self, files):
         files_found = []
         for file in files:
-            if os.path.exists(file.get("file_path")):
+            file_path = file.get("file_path")
+            if os.path.exists(file_path):
                 files_found.append(True)
             else:
-                print(f"File {file.get("file_path")} can't be found. Canceling upload process.")
+                print(f"File {file_path} can't be found. Canceling upload process.")
                 files_found.append(False)
                 break
         return all(files_found)
@@ -55,77 +58,87 @@ class GlacierLib:
         vault_list = response.get("VaultList")
         exists = any([True for vault in vault_list if vault['VaultName'] == vault_name])
         try:
-            assert exists, f"Seems like a vault with the name \"{vault_name}\" doesn\'t exist."
-        except AssertionError as e:
-            print(e)
+            assert exists
+        except AssertionError:
+            print(f"Seems like a vault with the name '{vault_name}' doesn\'t exist.")
             print("Canceling upload process.")
         return exists
 
     def _calculate_hashes(self, files):
-        for file in files  # FIX
-            with open(file, "rb") as file_object:
+        for file in files:
+            with open(file.get("file_path"), "rb") as file_object:
                 tree_hash = calculate_tree_hash(file_object)
-                print(tree_hash)
+            file.update({"hash": tree_hash})
+        return files
 
     def _start_upload(self, files, description):
-        """When only one file is provided it will be uploaded using the upload_archive()
-        method from boto3.
+        """When there is only one archive (single file) uploaded then this
+        method will be used.
         """
         response = None
-        with open(files[0], "rb") as file_object:
-            try:
-                response = self.client.upload_archive(
-                    vaultName=self.vault_name,
-                    archiveDescription=description,
-                    body=file_object
-                )
-                self.storage.save(response)
-            except Exception as e:
-                print(e)
+        with open(files[0].get("file_path"), "rb") as file_object:
+            upload_kwargs = {
+                "vaultName": self.vault_name,
+                "archiveDescription": description,
+                "body": file_object,
+            }
+            print("Starting single file upload")
+            response = self._execute_call(
+                self.client.upload_archive,
+                upload_kwargs
+            )
+            print("Upload completed. Saving response.")
+            self.storage.save(response)
         return response
 
-    def _start_multipart_upload(self, archive, description, part_size):
+    def _start_multipart_upload(self, files, description, part_size, total_size):
         """When there are multiple files (multiple parts of an archive) we use specific
         initiate, upload and complete methods from the boto3 library.
         """
+        file_count = len(files)
         initiate_kwargs = {
             "vaultName": self.vault_name,
             "archiveDescription": description,
             "partSize": part_size,
         }
+        print("Initiating multipart upload")
         initiate_response = self._execute_call(
             self.client.initiate_multipart_upload,
             initiate_kwargs
         )
 
         if initiate_response:
-            for archive_part in archive:
-                with open(archive_part, "rb") as file_object:
+            print(f"Starting multipart upload for {file_count} files")
+            for i, file in enumerate(files, 1):
+                with open(file.get("file_path"), "rb") as file_object:
                     upload_kwargs = {
                         "vaultName": self.vault_name,
                         "uploadId": initiate_response.get("uploadId"),
-                        "range": archive_part.get("range"),
+                        "range": file.get("range"),
                         "body": file_object,
                     }
+                print(f"Uploading file {i}/{file_count}...")
                 upload_response = self._execute_call(
                     self.client.upload_multipart_part,
                     upload_kwargs
                 )
-                if not upload_response:
-                    # TODO: Needs to have retry option
-                    break
-            
-            if all([True if archive_part.get("status") is 1 else False for archive_part in archive]):
+                # if not upload_response:
+                # TODO HERE: Retry on failure?
+                if upload_response:
+                    file.update({"success": True})
+                else:
+                    file.update({"success": False})
+
+            if all([file.get("success") for file in files]):
                 complete_kwargs = {
                     "vaultName": self.vault_name,
                     "uploadId": initiate_response.get("uploadId"),
-                    "archiveSize": ,
-                    "body": file_object,                    
+                    "archiveSize": "",
+                    "body": file_object,
                 }
             else:
-                # TODO: So something has failed. Not all of the parts got uploaded.
-                # Need to _abort_multipart_upload().
-                pass
+                print("Upload process has failed. Aborting multipart upload.")
+                self._abort_multipart_upload()
 
     def _abort_multipart_upload(self, upload_id):
         pass
@@ -134,16 +147,16 @@ class GlacierLib:
         response = None
         try:
             response = func(**kwargs)
-        except ResourceNotFoundException:
+        except self.client.exceptions.ResourceNotFoundException:
             raise
-        except InvalidParameterValueException:
+        except self.client.exceptions.InvalidParameterValueException:
             raise
-        except MissingParameterValueException:
+        except self.client.exceptions.MissingParameterValueException:
             raise
-        except RequestTimeoutException:
+        except self.client.exceptions.RequestTimeoutException:
             print("Timeout")
             raise
-        except ServiceUnavailableException:
+        except self.client.exceptions.ServiceUnavailableException:
             print("Connection error")
             raise
         return response
