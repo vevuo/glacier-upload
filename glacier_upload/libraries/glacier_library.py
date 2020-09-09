@@ -2,7 +2,7 @@ import os.path
 import boto3
 from botocore.utils import calculate_tree_hash
 from response_storage import Storage
-from helpers import get_total_size
+from helpers import get_total_size, get_file_size
 
 
 class GlacierLib:
@@ -15,7 +15,8 @@ class GlacierLib:
         """
         self.client = boto3.client('glacier', region_name=region_name)
         self.vault_name = vault_name
-        self.storage = Storage(file_name=storage_file)
+        self.storage_file = storage_file
+        self.storage = Storage(file_name=self.storage_file)
 
     def upload(self, files, description):
         """Initiates the upload process for the provided files.
@@ -27,13 +28,21 @@ class GlacierLib:
         if self._is_ready_for_upload(files):
             if len(files) > 1:
                 files = self._calculate_hashes(files)
+                part_size = get_file_size(files[0].get("file_path"))
                 total_size = get_total_size(files)
+                self._start_multipart_upload(
+                    files,
+                    description,
+                    part_size,
+                    total_size
+                    )
             else:
                 self._start_upload(files, description)
 
     def _is_ready_for_upload(self, files):
         status = [
             self._check_if_all_files_exist(files),
+            self._check_if_valid_file_sizes(files),
             self._check_if_vault_exists(self.vault_name),
         ]
         return all(status)
@@ -52,7 +61,7 @@ class GlacierLib:
 
     def _check_if_vault_exists(self, vault_name):
         response = self._execute_call(
-            self.client.list_vaults(),
+            self.client.list_vaults,
             {}
         )
         vault_list = response.get("VaultList")
@@ -63,6 +72,16 @@ class GlacierLib:
             print(f"Seems like a vault with the name '{vault_name}' doesn\'t exist.")
             print("Canceling upload process.")
         return exists
+
+    def _check_if_valid_file_sizes(self, files):
+        if len(files) > 1:
+            """TODO: Let's check that the multipart upload will have correct
+            file sizes for each file before upload (the last one can be anything
+            smaller than the others).
+            """
+            return True
+        else:
+            return True
 
     def _calculate_hashes(self, files):
         for file in files:
@@ -82,12 +101,12 @@ class GlacierLib:
                 "archiveDescription": description,
                 "body": file_object,
             }
-            print("Starting single file upload")
+            print("Starting single file upload.")
             response = self._execute_call(
                 self.client.upload_archive,
                 upload_kwargs
             )
-            print("Upload completed. Saving response.")
+            print(f"Upload completed. Saving response to {self.storage_file}.")
             self.storage.save(response)
         return response
 
@@ -101,14 +120,14 @@ class GlacierLib:
             "archiveDescription": description,
             "partSize": part_size,
         }
-        print("Initiating multipart upload")
+        print("Initiating multipart upload.")
         initiate_response = self._execute_call(
             self.client.initiate_multipart_upload,
             initiate_kwargs
         )
 
         if initiate_response:
-            print(f"Starting multipart upload for {file_count} files")
+            print(f"Starting multipart upload for {file_count} files. Total size {total_size} bytes.")
             for i, file in enumerate(files, 1):
                 with open(file.get("file_path"), "rb") as file_object:
                     upload_kwargs = {
@@ -122,7 +141,6 @@ class GlacierLib:
                     self.client.upload_multipart_part,
                     upload_kwargs
                 )
-                # if not upload_response:
                 # TODO HERE: Retry on failure?
                 if upload_response:
                     file.update({"success": True})
@@ -137,21 +155,25 @@ class GlacierLib:
                     "body": file_object,
                 }
             else:
-                print("Upload process has failed. Aborting multipart upload.")
+                print("Upload for some archive parts failed.
+                print("Aborting multipart upload.")
                 self._abort_multipart_upload()
 
     def _abort_multipart_upload(self, upload_id):
         pass
 
-    def _execute_call(self, func, kwargs):
+    def _execute_call(self, call, kwargs):
         response = None
         try:
-            response = func(**kwargs)
+            response = call(**kwargs)
         except self.client.exceptions.ResourceNotFoundException:
+            print("No such vault found")
             raise
         except self.client.exceptions.InvalidParameterValueException:
+            print("Invalid parameters")
             raise
         except self.client.exceptions.MissingParameterValueException:
+            print("Missing needed parameter")
             raise
         except self.client.exceptions.RequestTimeoutException:
             print("Timeout")
@@ -166,7 +188,8 @@ if __name__ == "__main__":
     glacier = GlacierLib(vault_name='cute-kittens-glacier')
     glacier.upload(
         files=[
-            {"file_path": "test.txt"}
+            {"file_path": "test.txt"},
+            {"file_path": "test_file2.txt"}
         ],
         description='Test files'
         )
