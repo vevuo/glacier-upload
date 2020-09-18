@@ -1,8 +1,8 @@
 import os.path
 import boto3
-from botocore.utils import calculate_tree_hash
 from response_storage import Storage
 from helpers import get_total_size, get_file_size
+from hash_calculator import get_hashes
 
 
 class GlacierLib:
@@ -22,19 +22,21 @@ class GlacierLib:
         """Initiates the upload process for the provided files.
 
         Args:
-            files (list): Path to each file
+            files (list): List of dicts. Containing the path to files.
             description (str): Description of what is being uploaded
         """
         if self._is_ready_for_upload(files):
             if len(files) > 1:
-                files = self._calculate_hashes(files)
+                files, total_hash = get_hashes(files)
+                # files, total_hash = self._calculate_and_add_tree_hashes(files)
                 part_size = get_file_size(files[0].get("file_path"))
                 total_size = get_total_size(files)
                 self._start_multipart_upload(
                     files,
                     description,
                     part_size,
-                    total_size
+                    total_size,
+                    total_hash
                     )
             else:
                 self._start_upload(files, description)
@@ -83,13 +85,6 @@ class GlacierLib:
         else:
             return True
 
-    def _calculate_hashes(self, files):
-        for file in files:
-            with open(file.get("file_path"), "rb") as file_object:
-                tree_hash = calculate_tree_hash(file_object)
-            file.update({"hash": tree_hash})
-        return files
-
     def _start_upload(self, files, description):
         """When there is only one archive (single file) uploaded then this
         method will be used.
@@ -110,7 +105,7 @@ class GlacierLib:
             self.storage.save(response)
         return response
 
-    def _start_multipart_upload(self, files, description, part_size, total_size):
+    def _start_multipart_upload(self, files, description, part_size, total_size, total_hash):
         """When there are multiple files (multiple parts of an archive) we use specific
         initiate, upload and complete methods from the boto3 library.
         """
@@ -151,11 +146,11 @@ class GlacierLib:
                 complete_kwargs = {
                     "vaultName": self.vault_name,
                     "uploadId": initiate_response.get("uploadId"),
-                    "archiveSize": "",
-                    "body": file_object,
+                    "archiveSize": total_size,
+                    "checksum": total_hash
                 }
             else:
-                print("Upload for some archive parts failed.
+                print("Upload for some archive parts failed.")
                 print("Aborting multipart upload.")
                 self._abort_multipart_upload()
 
