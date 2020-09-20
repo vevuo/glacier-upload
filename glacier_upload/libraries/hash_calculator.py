@@ -1,22 +1,22 @@
+import binascii
+import hashlib
 from botocore.utils import calculate_tree_hash
 
 
 def get_hashes(files):
     """Updates the provided files with tree hashes using the
-    calculate_tree_hash function from botocore.utils. Also returns
-    a total hash for all files.
+    calculate_tree_hash function from botocore.utils.
 
     Args:
-        files (list): List of dicts. Each containing path to the specific file.
+        files (list): List of dicts with info on each file (i.e. file path)
 
     Returns:
-        tuple: Updated files list and the total hash as a string
+        list: The original list of dicts updated with tree hash for each file
     """
     for file in files:
         tree_hash = _get_hash(file)
         file.update({"hash": tree_hash})
-    total_hash = _get_total_hash(files)
-    return files, total_hash
+    return files
 
 
 def _get_hash(file):
@@ -25,10 +25,25 @@ def _get_hash(file):
     return tree_hash
 
 
-def _get_total_hash(files):
+def get_total_hash(files):
+    """Calculates the total hash for all parts of the archive
+
+    Args:
+        files (list): List of dicts with info on each file (i.e. file path)
+
+    Returns:
+        string: Calculated total hash
+    """
     tree_hashes = [file.get("hash") for file in files]
-    total_hash = "".join(tree_hashes)
-    return total_hash
+    parent = []
+    for i in range(0, len(tree_hashes), 2):
+        if i < len(tree_hashes) - 1:
+            part1 = binascii.unhexlify(tree_hashes[i])
+            part2 = binascii.unhexlify(tree_hashes[i + 1])
+            parent.append(hashlib.sha256(part1 + part2).hexdigest())
+        else:
+            parent.append(tree_hashes[i])
+    return parent[0]
 
 
 if __name__ == "__main__":
@@ -36,6 +51,7 @@ if __name__ == "__main__":
         {"file_path": "test.txt"},
         {"file_path": "test_file2.txt"}
     ]
-    updated_files, total_hash = get_hashes(files)
+    updated_files = get_hashes(files)
     print(updated_files)
+    total_hash = get_total_hash(files)
     print(total_hash)

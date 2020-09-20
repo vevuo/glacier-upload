@@ -2,7 +2,7 @@ import os.path
 import boto3
 from response_storage import Storage
 from helpers import get_total_size, get_file_size
-from hash_calculator import get_hashes
+from hash_calculator import get_hashes, get_total_hash
 
 
 class GlacierLib:
@@ -27,10 +27,10 @@ class GlacierLib:
         """
         if self._is_ready_for_upload(files):
             if len(files) > 1:
-                files, total_hash = get_hashes(files)
-                # files, total_hash = self._calculate_and_add_tree_hashes(files)
-                part_size = get_file_size(files[0].get("file_path"))
-                total_size = get_total_size(files)
+                files = get_hashes(files)
+                total_hash = get_total_hash(files)
+                part_size = str(get_file_size(files[0].get("file_path")))
+                total_size = str(get_total_size(files))
                 self._start_multipart_upload(
                     files,
                     description,
@@ -85,6 +85,12 @@ class GlacierLib:
         else:
             return True
 
+    def _is_response_ok(self, response):
+        if response["ResponseMetadata"]["HTTPStatusCode"] in [200, 201]:
+            return True
+        else:
+            return False
+
     def _start_upload(self, files, description):
         """When there is only one archive (single file) uploaded then this
         method will be used.
@@ -121,7 +127,7 @@ class GlacierLib:
             initiate_kwargs
         )
 
-        if initiate_response:
+        if self._is_response_ok(initiate_response):
             print(f"Starting multipart upload for {file_count} files. Total size {total_size} bytes.")
             for i, file in enumerate(files, 1):
                 with open(file.get("file_path"), "rb") as file_object:
@@ -136,9 +142,10 @@ class GlacierLib:
                     self.client.upload_multipart_part,
                     upload_kwargs
                 )
-                # TODO HERE: Retry on failure?
-                if upload_response:
+                # TODO: Retry on failure?
+                if self._is_response_ok(upload_response):
                     file.update({"success": True})
+                    print("Done.")
                 else:
                     file.update({"success": False})
 
@@ -149,6 +156,14 @@ class GlacierLib:
                     "archiveSize": total_size,
                     "checksum": total_hash
                 }
+                complete_response = self._execute_call(
+                    self.client.complete_multipart_upload,
+                    complete_kwargs
+                    )
+                if self._is_response_ok(complete_response):
+                    print("Upload finished succesfully.")
+                else:
+                    print("Something went wrong with ")
             else:
                 print("Upload for some archive parts failed.")
                 print("Aborting multipart upload.")
@@ -176,6 +191,8 @@ class GlacierLib:
         except self.client.exceptions.ServiceUnavailableException:
             print("Connection error")
             raise
+        finally:
+            print(response)  # Debugging!
         return response
 
 
@@ -183,8 +200,9 @@ if __name__ == "__main__":
     glacier = GlacierLib(vault_name='cute-kittens-glacier')
     glacier.upload(
         files=[
-            {"file_path": "test.txt"},
-            {"file_path": "test_file2.txt"}
+            {"file_path": "data/random_2.zip.001"},
+            {"file_path": "data/random_2.zip.002"},
+            {"file_path": "data/random_2.zip.003"},
         ],
         description='Test files'
         )
