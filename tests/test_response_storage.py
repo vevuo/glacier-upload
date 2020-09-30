@@ -1,13 +1,7 @@
 import os
 import json
 import pytest
-from glacier_backup.libraries import response_storage
-
-
-@pytest.fixture(scope="session")
-def temp_json(tmpdir_factory):
-    fn = tmpdir_factory.mktemp("test_data").join("uploaded.json")
-    return fn
+from glacier_upload.libraries import response_storage
 
 
 @pytest.fixture
@@ -20,7 +14,6 @@ def test_storage_init(temp_json, storage):
     expected_content = {
         "archives": []
     }
-    # storage = response_storage.Storage(temp_json)
     with open(temp_json) as temp_file:
         temp_json_content = json.load(temp_file)
     assert expected_content == temp_json_content
