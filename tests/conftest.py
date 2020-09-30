@@ -16,7 +16,7 @@ def test_files(tmpdir_factory):
     ]
     for i, _ in enumerate(range(1, 4)):
         f = test_dir.join(f"file{i}.zip.00{i}")
-        f.write(content[i-1])
+        f.write(content[i])
         files.append(
             {"file_path": str(os.path.abspath(f))}
         )

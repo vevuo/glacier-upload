@@ -23,7 +23,7 @@ def add_ranges(files):
     start = 0
     for file in files:
         end = start + file.get("file_size")
-        file_range = {"range": f"bytes {start}-{end}/*"}
+        file_range = {"range": f"bytes {start}-{end-1}/*"}
         updated_files.append({**file, **file_range})
-        start = end + 1
+        start = end
     return updated_files

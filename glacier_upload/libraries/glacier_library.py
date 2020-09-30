@@ -1,7 +1,7 @@
 import os.path
 import boto3
 from response_storage import Storage
-from helpers import get_total_size, get_file_size, add_file_size, add_ranges
+from file_size_helpers import get_total_size, get_file_size, add_file_size, add_ranges
 from hash_calculator import get_hashes, get_total_hash
 
 
