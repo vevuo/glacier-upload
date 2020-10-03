@@ -2,7 +2,7 @@ import os.path
 import boto3
 from response_storage import Storage
 from file_size_helpers import get_total_size, get_file_size, add_file_size, add_ranges
-from hash_calculator import get_hashes, get_total_hash
+from hash_helpers import add_hashes, get_total_hash
 
 
 class GlacierLib:
@@ -19,7 +19,9 @@ class GlacierLib:
         self.storage = Storage(file_name=self.storage_file)
 
     def upload(self, files, description):
-        """Initiates the upload process for the provided files.
+        """Initiates the upload process for the provided files. Two modes:
+        1. Multipart upload (multiple files)
+        2. Single file upload
 
         Args:
             files (list): List of dicts. Containing the path to files.
@@ -29,10 +31,10 @@ class GlacierLib:
             if len(files) > 1:
                 files = add_file_size(files)
                 part_size = str(get_file_size(files[0].get("file_path")))
-                total_size = str(get_total_size(files))                
+                total_size = str(get_total_size(files))
                 files = add_ranges(files)
-                files = get_hashes(files)
-                total_hash = get_total_hash(files)                
+                files = add_hashes(files)
+                total_hash = get_total_hash(files)
                 self._start_multipart_upload(
                     files,
                     description,
@@ -88,7 +90,7 @@ class GlacierLib:
             return True
 
     def _is_response_ok(self, response):
-        if response["ResponseMetadata"]["HTTPStatusCode"] in [200, 201]:
+        if response["ResponseMetadata"]["HTTPStatusCode"] in [200, 201, 204]:
             return True
         else:
             return False
@@ -137,7 +139,7 @@ class GlacierLib:
                         "vaultName": self.vault_name,
                         "uploadId": initiate_response.get("uploadId"),
                         "range": file.get("range"),
-                        "body": file_object,
+                        "body": file_object.read(),
                     }
                 print(f"Uploading file {i}/{file_count}...")
                 upload_response = self._execute_call(
@@ -178,6 +180,7 @@ class GlacierLib:
         response = None
         try:
             response = call(**kwargs)
+            print(response) # Debugging!
         except self.client.exceptions.ResourceNotFoundException:
             print("No such vault found")
             raise
@@ -193,8 +196,6 @@ class GlacierLib:
         except self.client.exceptions.ServiceUnavailableException:
             print("Connection error")
             raise
-        finally:
-            print(response)  # Debugging!
         return response
 
 

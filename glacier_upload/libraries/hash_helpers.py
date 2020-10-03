@@ -3,7 +3,7 @@ import hashlib
 from botocore.utils import calculate_tree_hash
 
 
-def get_hashes(files):
+def add_hashes(files):
     """Updates the provided files with tree hashes using the
     calculate_tree_hash function from botocore.utils.
 
@@ -14,12 +14,12 @@ def get_hashes(files):
         list: The original list of dicts updated with tree hash for each file
     """
     for file in files:
-        tree_hash = _get_hash(file)
+        tree_hash = get_hash(file)
         file.update({"hash": tree_hash})
     return files
 
 
-def _get_hash(file):
+def get_hash(file):
     with open(file.get("file_path"), "rb") as file_object:
         tree_hash = calculate_tree_hash(file_object)
     return tree_hash
@@ -44,14 +44,3 @@ def get_total_hash(files):
         else:
             parent.append(tree_hashes[i])
     return parent[0]
-
-
-if __name__ == "__main__":
-    files = [
-        {"file_path": "test.txt"},
-        {"file_path": "test_file2.txt"}
-    ]
-    updated_files = get_hashes(files)
-    print(updated_files)
-    total_hash = get_total_hash(files)
-    print(total_hash)
