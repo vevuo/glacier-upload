@@ -44,3 +44,13 @@ def get_total_hash(files):
         else:
             parent.append(tree_hashes[i])
     return parent[0]
+
+
+if __name__ == "__main__":
+    files = [
+        {"file_path": "data/random_2.zip.001"},
+        {"file_path": "data/random_2.zip.002"},
+        {"file_path": "data/random_2.zip.003"},
+    ]
+    total_hash = get_total_hash(files)
+    print(total_hash)
