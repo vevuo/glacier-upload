@@ -1,15 +1,14 @@
 import os
 import sys
 import argparse
-from libraries.glacier_library import Glacier
-from libraries.packager_library import Packager
+from libraries.glacier_library import GlacierLib
 
 
 def setup_parser():
     parser = argparse.ArgumentParser(
-        prog='glacier_backup',
+        prog='glacier_upload',
         usage='%(prog)s [options] instance folder',
-        description='Backup files to AWS Glacier',
+        description='Upload files to AWS Glacier',
         epilog='Happy backuping!'
         )
     parser.add_argument(
