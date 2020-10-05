@@ -1,8 +1,8 @@
 import os.path
 import boto3
-from .response_storage import Storage
-from .file_size_helpers import get_total_size, get_file_size, add_file_size, add_ranges
-from .hash_helpers import add_hashes, get_total_hash
+from response_storage import Storage
+from file_size_helpers import get_total_size, get_file_size, add_file_size, add_ranges
+from hash_helpers import add_hashes, get_total_hash
 
 
 class GlacierLib:
@@ -34,8 +34,7 @@ class GlacierLib:
                 total_size = str(get_total_size(files))
                 files = add_ranges(files)
                 files = add_hashes(files)
-                # total_hash = get_total_hash(files)
-                total_hash = "cec30bde1c63d2d9169f3bba1aa136077864844de69b83c2c2c2d985979ea012"
+                total_hash = get_total_hash(files)
                 self._start_multipart_upload(
                     files,
                     description,
