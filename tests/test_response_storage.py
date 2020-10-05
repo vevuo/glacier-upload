@@ -1,4 +1,3 @@
-import os
 import json
 import pytest
 from glacier_upload.libraries import response_storage

@@ -1,13 +1,6 @@
-import os
-import sys
-import json
 import pytest
-import boto3
 from botocore.stub import Stubber
-path = os.path.dirname(os.path.abspath(__file__))
-#sys.path.insert(0, path + '/../')
-sys.path.insert(0, path + '/../glacier_upload/libraries')
-from glacier_library import GlacierLib
+from glacier_upload.libraries.glacier_library import GlacierLib
 
 
 @pytest.fixture
