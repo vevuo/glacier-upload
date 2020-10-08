@@ -7,6 +7,8 @@ expected_hashes = [
     "8162e509861bf0b9ccdb512d6abb780ed03beacb777c62b761562a9c2458de5d",
 ]
 
+expected_total_hash = "2a6e851a9a2533e00c2532340de472c3b70b2f33d5a3521c5812903530c85aea"
+
 
 def test_add_hashes(test_files):
     hashes_added = helpers.add_hashes(test_files)
@@ -23,4 +25,4 @@ def test_get_hash(test_files):
 def test_get_total_hash(test_files):
     hashes_added = helpers.add_hashes(test_files)
     result_total_hash = helpers.get_total_hash(hashes_added)
-    assert result_total_hash == "2a6e851a9a2533e00c2532340de472c3b70b2f33d5a3521c5812903530c85aea"
+    assert result_total_hash == expected_total_hash

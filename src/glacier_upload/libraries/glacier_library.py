@@ -1,8 +1,8 @@
 import os.path
 import boto3
-from response_storage import Storage
-from file_size_helpers import get_total_size, get_file_size, add_file_size, add_ranges
-from hash_helpers import add_hashes, get_total_hash
+from .response_storage import Storage
+from .file_size_helpers import get_total_size, get_file_size, add_file_size, add_ranges
+from .hash_helpers import add_hashes, get_total_hash
 
 
 class GlacierLib:
@@ -180,7 +180,7 @@ class GlacierLib:
         response = None
         try:
             response = call(**kwargs)
-            print(response) # Debugging!
+            print(response)  # Debugging!
         except self.client.exceptions.ResourceNotFoundException:
             print("No such vault found")
             raise
