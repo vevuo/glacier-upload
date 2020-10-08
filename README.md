@@ -10,6 +10,8 @@ Currently in the early building phase. NOT ready for real use.
 
 ## Installation
 
+python -m pip install -e .
+
 ## Usage
 
 ## Running tests
