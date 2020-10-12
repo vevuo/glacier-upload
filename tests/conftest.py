@@ -1,4 +1,5 @@
 import os
+from random import randint
 import pytest
 import boto3
 from botocore.stub import Stubber
@@ -11,11 +12,11 @@ def test_files(tmpdir_factory):
     files = []
     content = [
         "1000100111001111",
-        "1110101111001111",
-        "100011",
     ]
-    for i, _ in enumerate(range(1, 4)):
-        f = test_dir.join(f"file{i}.zip.00{i}")
+    content_large = [str(randint(0, 1)) for _ in range(0, 4294304)]
+    content.append("".join(content_large))
+    for i, _ in enumerate(range(0, len(content))):
+        f = test_dir.join(f"file.txt.00{i}")
         f.write(content[i])
         files.append(
             {"file_path": str(os.path.abspath(f))}

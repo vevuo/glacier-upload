@@ -3,7 +3,7 @@ import json
 
 
 class Storage:
-    def __init__(self, file_name="uploaded.json"):
+    def __init__(self, file_name="uploaded_log.json"):
         """By default a json file is used to store archive ids and other
         information related to the uploaded file(s). This can then be used
         to retrieve the archives later on. A proper database based setup
