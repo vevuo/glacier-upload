@@ -1,177 +1,151 @@
-import os.path
 import boto3
+from .setup_logger import logger
 from .response_storage import Storage
-from .file_size_helpers import get_total_size, get_file_size, add_file_size, add_ranges
-from .hash_helpers import add_hashes, get_total_hash
+from .upload_validator import Validator
+from .file_size_helpers import get_allowed_sizes, get_file_size, get_needed_parts, add_byte_ranges
+from .hash_helpers import get_part_hash, get_total_hash
 
 
 class GlacierLib:
-    def __init__(self, vault_name, region_name="eu-west-1", storage_file="uploaded.json"):
-        """Uploads files to the specified AWS Glacier vault.
+    def __init__(self, vault_name, region_name="eu-west-1", upload_log="uploaded_log.json"):
+        """Uploads a file in to the specified AWS S3 Glacier vault. Options for
+        executing the upload either in one single chunk or multiple smaller parts.
 
         Args:
-            vault_name (str): Name of the target vault
-            region_name (str, optional): AWS region that is used. Defaults to "eu-west-1".
+            vault_name (str): Name of the vault in Glacier.
+            region_name (str, optional): Where the vault is located in aws. Defaults to "eu-west-1".
+            log_file (str, optional): Logs the responses from Glacier. Defaults to "uploaded_log.json".
         """
+        self.logger = logger
         self.client = boto3.client('glacier', region_name=region_name)
         self.vault_name = vault_name
-        self.storage_file = storage_file
-        self.storage = Storage(file_name=self.storage_file)
+        self.upload_log = upload_log
+        self.storage = Storage(file_name=self.upload_log)
+        self.validator = Validator()
+        self.hashes = []
 
-    def upload(self, files, description):
-        """Initiates the upload process for the provided files. Two modes:
-        1. Multipart upload (multiple files)
-        2. Single file upload
+    def upload(self, path_to_file, description=""):
+        """Handles uploading a file in a single chunk. The "default" option.
 
         Args:
-            files (list): List of dicts. Containing the path to files.
-            description (str): Description of what is being uploaded
+            path_to_file (str): Path to the file.
+            description (str, optional): Description of what is uploaded.
         """
-        if self._is_ready_for_upload(files):
-            if len(files) > 1:
-                files = add_file_size(files)
-                part_size = str(get_file_size(files[0].get("file_path")))
-                total_size = str(get_total_size(files))
-                files = add_ranges(files)
-                files = add_hashes(files)
-                total_hash = get_total_hash(files)
-                self._start_multipart_upload(
-                    files,
-                    description,
-                    part_size,
-                    total_size,
-                    total_hash
-                    )
-            else:
-                self._start_upload(files, description)
+        if self.validator.preupload_checks(path_to_file) and self._vault_exists(self.vault_name):
+            total_size = get_file_size(path_to_file)
+            self._start_upload(path_to_file, description, total_size)
 
-    def _is_ready_for_upload(self, files):
-        status = [
-            self._check_if_all_files_exist(files),
-            self._check_if_valid_file_sizes(files),
-            self._check_if_vault_exists(self.vault_name),
-        ]
-        return all(status)
+    def multipart_upload(self, path_to_file, description="", part_size="4"):
+        """Handles the multipart upload of a file.
 
-    def _check_if_all_files_exist(self, files):
-        files_found = []
-        for file in files:
-            file_path = file.get("file_path")
-            if os.path.exists(file_path):
-                files_found.append(True)
-            else:
-                print(f"File {file_path} can't be found. Canceling upload process.")
-                files_found.append(False)
-                break
-        return all(files_found)
+        Args:
+            path_to_file (str): Path to the file.
+            description (str, optional): Description of what is uploaded.
+            part_size (int, optional): Size for the multipart parts. Defaults to 4 megabytes.
+        """
+        if self.validator.preupload_checks(path_to_file, part_size) and self._vault_exists(self.vault_name):
+            total_size = get_file_size(path_to_file)
+            part_size_bytes = get_allowed_sizes().get(str(part_size))
+            parts = get_needed_parts(path_to_file, part_size_bytes, total_size)
+            parts = add_byte_ranges(parts)
+            response = self._initiate_multipart_upload(description, part_size_bytes, total_size)
+            if self.validator._is_response_ok(response):
+                upload_id = response.get("uploadId")
+                upload_success = self._start_multipart_upload(upload_id, path_to_file, parts)
+                if upload_success:
+                    total_hash = get_total_hash(self.hashes)
+                    self._complete_multipart_upload(upload_id, total_size, total_hash)
 
-    def _check_if_vault_exists(self, vault_name):
-        response = self._execute_call(
-            self.client.list_vaults,
-            {}
-        )
+    def _vault_exists(self, vault_name):
+        """Checks if a vault exists with the specified name (and in the region)."""
+        response = self._execute_call(self.client.list_vaults, {})
         vault_list = response.get("VaultList")
         exists = any([True for vault in vault_list if vault['VaultName'] == vault_name])
         try:
             assert exists
         except AssertionError:
-            print(f"Seems like a vault with the name '{vault_name}' doesn\'t exist.")
-            print("Canceling upload process.")
+            self.logger.error(f"Could not locate a vault with the name '{vault_name}'.")
         return exists
 
-    def _check_if_valid_file_sizes(self, files):
-        if len(files) > 1:
-            """TODO: Let's check that the multipart upload will have correct
-            file sizes for each file before upload (the last one can be anything
-            smaller than the others).
-            """
-            return True
-        else:
-            return True
-
-    def _is_response_ok(self, response):
-        if response["ResponseMetadata"]["HTTPStatusCode"] in [200, 201, 204]:
-            return True
-        else:
-            return False
-
-    def _start_upload(self, files, description):
-        """When there is only one archive (single file) uploaded then this
-        method will be used.
-        """
-        response = None
-        with open(files[0].get("file_path"), "rb") as file_object:
+    def _start_upload(self, path_to_file, description, total_size):
+        """This is the default single chunk upload option."""
+        self.logger.info(f"Starting upload. File size {total_size} bytes.")
+        with open(path_to_file, "rb") as file_object:
             upload_kwargs = {
                 "vaultName": self.vault_name,
                 "archiveDescription": description,
                 "body": file_object,
             }
-            print("Starting single file upload.")
+            self.logger.info("Uploading...")
             response = self._execute_call(
                 self.client.upload_archive,
                 upload_kwargs
             )
-            print(f"Upload completed. Saving response to {self.storage_file}.")
-            self.storage.save(response)
-        return response
+            if self.validator._is_response_ok(response):
+                self.logger.info("Upload completed.")
+                self.storage.save(response)
+            else:
+                self.logger.error("Upload failed!")
 
-    def _start_multipart_upload(self, files, description, part_size, total_size, total_hash):
-        """When there are multiple files (multiple parts of an archive) we use specific
-        initiate, upload and complete methods from the boto3 library.
-        """
-        file_count = len(files)
+    def _initiate_multipart_upload(self, description, part_size_bytes, total_size):
+        """This initiates the multipart upload in the Glacier."""
+        self.logger.info(f"Starting multipart upload with part size {part_size_bytes} bytes.")
+        self.logger.info(f"Total upload size {total_size} bytes.")
         initiate_kwargs = {
             "vaultName": self.vault_name,
             "archiveDescription": description,
-            "partSize": part_size,
+            "partSize": str(part_size_bytes),
         }
-        print("Initiating multipart upload.")
-        initiate_response = self._execute_call(
+        response = self._execute_call(
             self.client.initiate_multipart_upload,
             initiate_kwargs
         )
+        return response
 
-        if self._is_response_ok(initiate_response):
-            print(f"Starting multipart upload for {file_count} files. Total size {total_size} bytes.")
-            for i, file in enumerate(files, 1):
-                with open(file.get("file_path"), "rb") as file_object:
-                    upload_kwargs = {
-                        "vaultName": self.vault_name,
-                        "uploadId": initiate_response.get("uploadId"),
-                        "range": file.get("range"),
-                        "body": file_object.read(),
-                    }
-                print(f"Uploading file {i}/{file_count}...")
-                upload_response = self._execute_call(
-                    self.client.upload_multipart_part,
-                    upload_kwargs
-                )
-                # TODO: Retry on failure?
-                if self._is_response_ok(upload_response):
-                    file.update({"success": True})
-                    print("Done.")
+    def _start_multipart_upload(self, upload_id, path_to_file, parts):
+        """Uploads the file part by part."""
+        part_count = len(parts)
+        with open(path_to_file, "rb") as file_object:
+            for i, part in enumerate(parts, 1):
+                self.logger.info(f"Uploading part {i}/{part_count}...")
+                file_object.seek(part.get("range_start"))
+                part_data = file_object.read(part.get("part_size"))
+                self.hashes.append(get_part_hash(part_data))
+                response = self._upload_part(part, upload_id, part_data)
+                if self.validator._is_response_ok(response):
+                    part.update({"success": True})
+                    self.logger.info("Done.")
                 else:
-                    file.update({"success": False})
+                    self.logger.error("Fail.")
+        return all([True for part in parts if part["success"]])
 
-            if all([file.get("success") for file in files]):
-                complete_kwargs = {
-                    "vaultName": self.vault_name,
-                    "uploadId": initiate_response.get("uploadId"),
-                    "archiveSize": total_size,
-                    "checksum": total_hash
-                }
-                complete_response = self._execute_call(
-                    self.client.complete_multipart_upload,
-                    complete_kwargs
-                    )
-                if self._is_response_ok(complete_response):
-                    print("Upload finished succesfully.")
-                else:
-                    print("Something went wrong with ")
-            else:
-                print("Upload for some archive parts failed.")
-                print("Aborting multipart upload.")
-                self._abort_multipart_upload()
+    def _upload_part(self, part, upload_id, body):
+        """The actual upload of a single part."""
+        upload_kwargs = {
+            "vaultName": self.vault_name,
+            "uploadId": upload_id,
+            "range": part.get("range"),
+            "body": body,
+        }
+        response = self._execute_call(
+            self.client.upload_multipart_part,
+            upload_kwargs
+        )
+        return response
+
+    def _complete_multipart_upload(self, upload_id, total_size, total_hash):
+        """After all parts have been succesfully uploaded this ends the process."""
+        complete_kwargs = {
+            "vaultName": self.vault_name,
+            "uploadId": upload_id,
+            "archiveSize": str(total_size),
+            "checksum": total_hash
+        }
+        response = self._execute_call(
+            self.client.complete_multipart_upload,
+            complete_kwargs
+            )
+        return response
 
     def _abort_multipart_upload(self, upload_id):
         pass
@@ -180,32 +154,17 @@ class GlacierLib:
         response = None
         try:
             response = call(**kwargs)
-            print(response)  # Debugging!
         except self.client.exceptions.ResourceNotFoundException:
-            print("No such vault found")
-            raise
+            self.logger.error("Vault not found! Aborting upload.")
         except self.client.exceptions.InvalidParameterValueException:
-            print("Invalid parameters")
-            raise
+            self.logger.error("Invalid parameter in the request! Aborting upload.")
         except self.client.exceptions.MissingParameterValueException:
-            print("Missing needed parameter")
-            raise
+            self.logger.error("Missing a parameter in the request! Aborting upload.")
         except self.client.exceptions.RequestTimeoutException:
-            print("Timeout")
-            raise
+            self.logger.error("Request timed out! Aborting upload.")
         except self.client.exceptions.ServiceUnavailableException:
-            print("Connection error")
-            raise
+            self.logger.error("Connection error or service unavailable. Aborting upload.")
+        finally:
+            if response:
+                self.logger.debug(response)
         return response
-
-
-if __name__ == "__main__":
-    glacier = GlacierLib(vault_name='cute-kittens-glacier')
-    glacier.upload(
-        files=[
-            {"file_path": "data/random_2.zip.001"},
-            {"file_path": "data/random_2.zip.002"},
-            {"file_path": "data/random_2.zip.003"},
-        ],
-        description='Test files'
-        )
