@@ -2,7 +2,7 @@ import boto3
 from .setup_logger import logger
 from .response_storage import Storage
 from .upload_validator import Validator
-from .file_size_helpers import get_allowed_sizes, get_file_size, get_needed_parts, add_byte_ranges
+from .partlify import get_allowed_sizes, get_file_size, get_needed_parts, add_byte_ranges
 from .hash_helpers import get_part_hash, get_total_hash
 
 
@@ -103,7 +103,7 @@ class GlacierLib:
         return response
 
     def _start_multipart_upload(self, upload_id, path_to_file, parts):
-        """Uploads the file part by part."""
+        """Uploads the file part by part. Gets tree hashes for the parts at the same time."""
         part_count = len(parts)
         with open(path_to_file, "rb") as file_object:
             for i, part in enumerate(parts, 1):
@@ -116,11 +116,14 @@ class GlacierLib:
                     part.update({"success": True})
                     self.logger.info("Done.")
                 else:
+                    # TODO: Retry?
+                    part.update({"success": False})
                     self.logger.error("Fail.")
+                    break
         return all([True for part in parts if part["success"]])
 
     def _upload_part(self, part, upload_id, body):
-        """The actual upload of a single part."""
+        """Uploading a single part."""
         upload_kwargs = {
             "vaultName": self.vault_name,
             "uploadId": upload_id,
@@ -148,15 +151,19 @@ class GlacierLib:
         return response
 
     def _abort_multipart_upload(self, upload_id):
+        """TODO: Possibility to abort a failed upload."""
         pass
 
     def _execute_call(self, call, kwargs):
+        """Calls the boto3 method with provided kwargs."""
         response = None
         try:
             response = call(**kwargs)
+            self.logger.debug(response)
         except self.client.exceptions.ResourceNotFoundException:
             self.logger.error("Vault not found! Aborting upload.")
         except self.client.exceptions.InvalidParameterValueException:
+            raise
             self.logger.error("Invalid parameter in the request! Aborting upload.")
         except self.client.exceptions.MissingParameterValueException:
             self.logger.error("Missing a parameter in the request! Aborting upload.")
@@ -164,7 +171,4 @@ class GlacierLib:
             self.logger.error("Request timed out! Aborting upload.")
         except self.client.exceptions.ServiceUnavailableException:
             self.logger.error("Connection error or service unavailable. Aborting upload.")
-        finally:
-            if response:
-                self.logger.debug(response)
         return response

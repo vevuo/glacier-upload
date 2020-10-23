@@ -1,6 +1,6 @@
 from pathlib import Path
 from .setup_logger import logger
-from .file_size_helpers import get_allowed_sizes
+from .partlify import get_allowed_sizes
 
 
 class Validator:

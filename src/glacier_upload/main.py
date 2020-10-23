@@ -4,7 +4,7 @@ from glacier_upload.libraries.glacier_library import GlacierLib
 
 def setup_parser():
     parser = argparse.ArgumentParser(
-        prog='glacier-upload',
+        prog='glacier_upload',
         usage='%(prog)s [options] file vault',
         description='upload files to AWS S3 Glacier',
         epilog='happy uploading!'
