@@ -5,7 +5,7 @@ from glacier_upload.libraries.glacier_library import GlacierLib
 def setup_parser():
     parser = argparse.ArgumentParser(
         prog='glacier_upload',
-        usage='%(prog)s [options] file vault',
+        usage='%(prog)s [options] file vault_name',
         description='upload files to AWS S3 Glacier',
         epilog='happy uploading!'
         )
@@ -16,8 +16,8 @@ def setup_parser():
         help='file path for the upload'
         )
     parser.add_argument(
-        'vault',
-        metavar='vault',
+        'vault_name',
+        metavar='vault_name',
         type=str,
         help='glacier vault instance name'
         )
@@ -43,7 +43,6 @@ def setup_parser():
     parser.add_argument(
         '-r',
         '--region',
-        default='eu-west-1',
         help='aws region where the vault is located'
     )
     parser.add_argument(
@@ -58,20 +57,21 @@ def setup_parser():
 def main():
     parser = setup_parser()
     args = parser.parse_args()
+    settings = vars(args)
     glacier = GlacierLib(
-        vault_name=args.vault,
-        region_name=args.region,
-        upload_log=args.log_file,
+        vault_name=settings.get("vault_name"),
+        upload_log=settings.get("log_file"),        
+        region_name=settings.get("region_name"),
         )
     upload_args = {
-        "path_to_file": args.file,
-        "description": args.desc,
+        "path_to_file": settings.get("file"),
+        "description": settings.get("desc"),
+        "part_size": settings.get("size"),
     }
-    if args.multipart is False:
-        glacier.upload(**upload_args)
-    else:
-        upload_args.update({"part_size": args.size})
+    if settings.get("multipart"):
         glacier.multipart_upload(**upload_args)
+    else:
+        glacier.upload(**upload_args)
 
 
 if __name__ == "__main__":

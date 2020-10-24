@@ -7,7 +7,7 @@ from .hash_helpers import get_part_hash, get_total_hash
 
 
 class GlacierLib:
-    def __init__(self, vault_name, region_name="eu-west-1", upload_log="uploaded_log.json"):
+    def __init__(self, vault_name, upload_log="uploaded_log.json", region_name=None):
         """Uploads a file in to the specified AWS S3 Glacier vault. Options for
         executing the upload either in one single chunk or multiple smaller parts.
 
@@ -24,7 +24,7 @@ class GlacierLib:
         self.validator = Validator()
         self.hashes = []
 
-    def upload(self, path_to_file, description=""):
+    def upload(self, path_to_file, description="", **kwargs):
         """Handles uploading a file in a single chunk. The "default" option.
 
         Args:
@@ -35,7 +35,7 @@ class GlacierLib:
             total_size = get_file_size(path_to_file)
             self._start_upload(path_to_file, description, total_size)
 
-    def multipart_upload(self, path_to_file, description="", part_size="4"):
+    def multipart_upload(self, path_to_file, description="", **kwargs):
         """Handles the multipart upload of a file.
 
         Args:
@@ -43,6 +43,7 @@ class GlacierLib:
             description (str, optional): Description of what is uploaded.
             part_size (int, optional): Size for the multipart parts. Defaults to 4 megabytes.
         """
+        part_size = kwargs["part_size"]
         if self.validator.preupload_checks(path_to_file, part_size) and self._vault_exists(self.vault_name):
             total_size = get_file_size(path_to_file)
             part_size_bytes = get_allowed_sizes().get(str(part_size))
