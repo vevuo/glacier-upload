@@ -42,12 +42,6 @@ See more details with:
 
 `glacier-upload --help`
 
-## Running tests
-
-Tests are located in the `tests` folder (also configured in the `setup.cfg`). Running the tests can simply be done with:
-
-`python -m pytest`
-
 ## TODO
 
 * More tests
@@ -56,5 +50,5 @@ Tests are located in the `tests` folder (also configured in the `setup.cfg`). Ru
 * Uploading multiple files (from a folder) on one go
 * Progress bar
 * Displaying the upload speed
-...
-...
+* ...
+* ...
