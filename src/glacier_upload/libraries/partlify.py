@@ -35,7 +35,7 @@ def add_byte_ranges(parts):
             {
                 "range": f"bytes {start}-{end-1}/*",
                 "range_start": start,
-                "range_end": end,
+                "range_end": end - 1,
             }
         )
         start = end

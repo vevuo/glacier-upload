@@ -1,9 +1,9 @@
 import boto3
+from botocore.utils import calculate_tree_hash
 from .setup_logger import logger
 from .response_storage import Storage
 from .upload_validator import Validator
 from .partlify import get_allowed_sizes, get_file_size, get_needed_parts, add_byte_ranges
-from .hash_helpers import get_part_hash, get_total_hash
 
 
 class GlacierLib:
@@ -54,8 +54,12 @@ class GlacierLib:
                 upload_id = response.get("uploadId")
                 upload_success = self._start_multipart_upload(upload_id, path_to_file, parts)
                 if upload_success:
-                    total_hash = get_total_hash(self.hashes)
-                    self._complete_multipart_upload(upload_id, total_size, total_hash)
+                    self.logger.info("Calculating tree hash...")
+                    with open(path_to_file, 'rb') as file_object:
+                        total_hash = calculate_tree_hash(file_object)
+                    completed_response = self._complete_multipart_upload(upload_id, total_size, total_hash)
+                    if self.validator._is_response_ok(completed_response):
+                        self.logger.info("Upload completed.")
 
     def _vault_exists(self, vault_name):
         """Checks if a vault exists with the specified name (and in the region)."""
@@ -111,24 +115,24 @@ class GlacierLib:
                 self.logger.info(f"Uploading part {i}/{part_count}...")
                 file_object.seek(part.get("range_start"))
                 part_data = file_object.read(part.get("part_size"))
-                self.hashes.append(get_part_hash(part_data))
-                response = self._upload_part(part, upload_id, part_data)
+                response = self._upload_part(part, upload_id, part.get("range"), part_data)
                 if self.validator._is_response_ok(response):
                     part.update({"success": True})
                     self.logger.info("Done.")
                 else:
                     # TODO: Retry?
                     part.update({"success": False})
-                    self.logger.error("Fail.")
+                    self.logger.error("Failed!")
                     break
+        self.logger.debug(parts)
         return all([True for part in parts if part["success"]])
 
-    def _upload_part(self, part, upload_id, body):
+    def _upload_part(self, part, upload_id, range_string, body):
         """Uploading a single part."""
         upload_kwargs = {
             "vaultName": self.vault_name,
             "uploadId": upload_id,
-            "range": part.get("range"),
+            "range": range_string,
             "body": body,
         }
         response = self._execute_call(
