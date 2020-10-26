@@ -26,7 +26,7 @@ Currently can only be installed from an archive:
 
 ## Usage
 
-Basic usage (will upload in a one chunk):
+Basic usage (will upload in one chunk):
 
 `glacier-upload [upload_file_path] [glacier_vault_name]`
 
@@ -50,7 +50,7 @@ Tests are located in the `tests` folder (also configured in the `setup.cfg`). Ru
 
 ## TODO
 
-* More unit tests (current coverage is )
+* More tests
 * Possibility to abort a failed upload
 * Retry for failed attempts
 * Uploading multiple files (from a folder) on one go
