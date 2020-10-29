@@ -8,6 +8,15 @@ class Validator:
         self.logger = logger
 
     def preupload_checks(self, path_to_file, part_size=None):
+        """Runs the preupload checks to avoid starting unnecessary upload processes.
+
+        Args:
+            path_to_file (str): Path to the upload file.
+            part_size (int, optional): If provided will also run the multipart validations.
+
+        Returns:
+            bool: Result from the tests (if all okay or right when a check fails).
+        """
         checks = [
             {'method': self._check_if_file_exist, 'args': [path_to_file]},
         ]
@@ -58,7 +67,15 @@ class Validator:
             valid_part_size = True
         return valid_part_size
 
-    def _is_response_ok(self, response):
+    def is_response_ok(self, response):
+        """Checks the response from Glacier (if correct https status code included).
+
+        Args:
+            response (dict): Response from Glacier
+
+        Returns:
+            bool: If response includes any of the specified okay codes
+        """
         if response["ResponseMetadata"]["HTTPStatusCode"] in [200, 201, 204]:
             return True
         else:

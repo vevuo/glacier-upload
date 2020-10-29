@@ -8,24 +8,22 @@ from .partlify import get_allowed_sizes, get_file_size, get_needed_parts, add_by
 
 class GlacierLib:
     def __init__(self, vault_name, upload_log="uploaded_log.json", region_name=None):
-        """Uploads a file in to the specified AWS S3 Glacier vault. Options for
-        executing the upload either in one single chunk or multiple smaller parts.
+        """Initializing the GlacierLib. If region is not specified one from ~/.aws/config will
+        be used.
 
         Args:
             vault_name (str): Name of the vault in Glacier.
-            region_name (str, optional): Where the vault is located in aws. Defaults to "eu-west-1".
             log_file (str, optional): Logs the responses from Glacier. Defaults to "uploaded_log.json".
+            region_name (str, optional): Where the vault is located in AWS.
         """
         self.logger = logger
-        self.client = boto3.client('glacier', region_name=region_name)
         self.vault_name = vault_name
-        self.upload_log = upload_log
-        self.storage = Storage(file_name=self.upload_log)
+        self.client = boto3.client('glacier', region_name=region_name)                
         self.validator = Validator()
-        self.hashes = []
+        self.storage = Storage(file_name=upload_log)
 
     def upload(self, path_to_file, description="", **kwargs):
-        """Handles uploading a file in a single chunk. The "default" option.
+        """Uploading a file in a single chunk. The default option.
 
         Args:
             path_to_file (str): Path to the file.
@@ -35,15 +33,14 @@ class GlacierLib:
             total_size = get_file_size(path_to_file)
             self._start_upload(path_to_file, description, total_size)
 
-    def multipart_upload(self, path_to_file, description="", **kwargs):
-        """Handles the multipart upload of a file.
+    def multipart_upload(self, path_to_file, part_size, description=""):
+        """Uploading a file in mutiple parts.
 
         Args:
             path_to_file (str): Path to the file.
             description (str, optional): Description of what is uploaded.
             part_size (int, optional): Size for the multipart parts. Defaults to 4 megabytes.
         """
-        part_size = kwargs["part_size"]
         if self.validator.preupload_checks(path_to_file, part_size) and self._vault_exists(self.vault_name):
             total_size = get_file_size(path_to_file)
             part_size_bytes = get_allowed_sizes().get(str(part_size))
@@ -52,7 +49,7 @@ class GlacierLib:
             response = self._initiate_multipart_upload(description, part_size_bytes, total_size)
             if self.validator._is_response_ok(response):
                 upload_id = response.get("uploadId")
-                upload_success = self._start_multipart_upload(upload_id, path_to_file, parts)
+                upload_success = self._do_multipart_upload(upload_id, path_to_file, parts)
                 if upload_success:
                     self.logger.info("Calculating tree hash...")
                     with open(path_to_file, 'rb') as file_object:
@@ -73,7 +70,7 @@ class GlacierLib:
         return exists
 
     def _start_upload(self, path_to_file, description, total_size):
-        """This is the default single chunk upload option."""
+        """The single chunk upload."""
         self.logger.info(f"Starting upload. File size {total_size} bytes.")
         with open(path_to_file, "rb") as file_object:
             upload_kwargs = {
@@ -91,9 +88,10 @@ class GlacierLib:
                 self.storage.save(response)
             else:
                 self.logger.error("Upload failed!")
+                self.logger.debug(response)
 
     def _initiate_multipart_upload(self, description, part_size_bytes, total_size):
-        """This initiates the multipart upload in the Glacier."""
+        """The multipart upload in the Glacier."""
         self.logger.info(f"Starting multipart upload with part size {part_size_bytes} bytes.")
         self.logger.info(f"Total upload size {total_size} bytes.")
         initiate_kwargs = {
@@ -107,8 +105,8 @@ class GlacierLib:
         )
         return response
 
-    def _start_multipart_upload(self, upload_id, path_to_file, parts):
-        """Uploads the file part by part. Gets tree hashes for the parts at the same time."""
+    def _do_multipart_upload(self, upload_id, path_to_file, parts):
+        """Uploads the file part by part."""
         part_count = len(parts)
         with open(path_to_file, "rb") as file_object:
             for i, part in enumerate(parts, 1):
@@ -168,7 +166,6 @@ class GlacierLib:
         except self.client.exceptions.ResourceNotFoundException:
             self.logger.error("Vault not found! Aborting upload.")
         except self.client.exceptions.InvalidParameterValueException:
-            raise
             self.logger.error("Invalid parameter in the request! Aborting upload.")
         except self.client.exceptions.MissingParameterValueException:
             self.logger.error("Missing a parameter in the request! Aborting upload.")

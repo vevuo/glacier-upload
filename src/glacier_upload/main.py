@@ -49,7 +49,7 @@ def setup_parser():
         '-l',
         '--log_file',
         default='uploaded_log.json',
-        help='logs the responses from Glacier (e.g. uploadId) in JSON format. Defaults to uploaded.json'
+        help='logs the responses from Glacier (e.g. uploadId) in JSON format. Defaults to uploaded_log.json'
     )
     return parser
 
@@ -60,13 +60,13 @@ def main():
     settings = vars(args)
     glacier = GlacierLib(
         vault_name=settings.get("vault_name"),
-        upload_log=settings.get("log_file"),        
+        upload_log=settings.get("log_file"),
         region_name=settings.get("region_name"),
         )
     upload_args = {
         "path_to_file": settings.get("file"),
+        "part_size": settings.get("size"),        
         "description": settings.get("desc"),
-        "part_size": settings.get("size"),
     }
     if settings.get("multipart"):
         glacier.multipart_upload(**upload_args)
