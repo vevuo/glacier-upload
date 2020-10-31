@@ -33,7 +33,7 @@ class GlacierLib:
             total_size = get_file_size(path_to_file)
             self._start_upload(path_to_file, description, total_size)
 
-    def multipart_upload(self, path_to_file, part_size, description=""):
+    def multipart_upload(self, path_to_file, part_size=4, description=""):
         """Uploading a file in mutiple parts.
 
         Args:
@@ -47,7 +47,7 @@ class GlacierLib:
             parts = get_needed_parts(path_to_file, part_size_bytes, total_size)
             parts = add_byte_ranges(parts)
             response = self._initiate_multipart_upload(description, part_size_bytes, total_size)
-            if self.validator._is_response_ok(response):
+            if self.validator.is_response_ok(response):
                 upload_id = response.get("uploadId")
                 upload_success = self._do_multipart_upload(upload_id, path_to_file, parts)
                 if upload_success:
@@ -55,7 +55,7 @@ class GlacierLib:
                     with open(path_to_file, 'rb') as file_object:
                         total_hash = calculate_tree_hash(file_object)
                     completed_response = self._complete_multipart_upload(upload_id, total_size, total_hash)
-                    if self.validator._is_response_ok(completed_response):
+                    if self.validator.is_response_ok(completed_response):
                         self.logger.info("Upload completed.")
 
     def _vault_exists(self, vault_name):
@@ -83,7 +83,7 @@ class GlacierLib:
                 self.client.upload_archive,
                 upload_kwargs
             )
-            if self.validator._is_response_ok(response):
+            if self.validator.is_response_ok(response):
                 self.logger.info("Upload completed.")
                 self.storage.save(response)
             else:
@@ -114,7 +114,7 @@ class GlacierLib:
                 file_object.seek(part.get("range_start"))
                 part_data = file_object.read(part.get("part_size"))
                 response = self._upload_part(part, upload_id, part.get("range"), part_data)
-                if self.validator._is_response_ok(response):
+                if self.validator.is_response_ok(response):
                     part.update({"success": True})
                     self.logger.info("Done.")
                 else:
@@ -151,6 +151,7 @@ class GlacierLib:
             self.client.complete_multipart_upload,
             complete_kwargs
             )
+        self.storage.save(response)
         return response
 
     def _abort_multipart_upload(self, upload_id):

@@ -4,7 +4,7 @@ from glacier_upload.libraries.glacier_library import GlacierLib
 
 def setup_parser():
     parser = argparse.ArgumentParser(
-        prog='glacier_upload',
+        prog='glacier-upload',
         usage='%(prog)s [options] file vault_name',
         description='upload files to AWS S3 Glacier',
         epilog='happy uploading!'
@@ -13,13 +13,13 @@ def setup_parser():
         'file',
         metavar='file',
         type=str,
-        help='file path for the upload'
+        help='uploaded file'
         )
     parser.add_argument(
         'vault_name',
         metavar='vault_name',
         type=str,
-        help='glacier vault instance name'
+        help='glacier vault name'
         )
     parser.add_argument(
         '-d',
@@ -31,11 +31,11 @@ def setup_parser():
         '-m',
         '--multipart',
         action='store_true',
-        help='use multipart upload'
+        help='use multipart upload. default part size is 4 megabytes.'
     )
     parser.add_argument(
         '-s',
-        '--size',
+        '--part_size',
         default='4',
         type=int,
         help='multipart upload part size in megabytes. Sizes allowed by Glacier are 1, 2, 4, 8 and so on.'
@@ -43,13 +43,13 @@ def setup_parser():
     parser.add_argument(
         '-r',
         '--region',
-        help='aws region where the vault is located'
+        help='aws region (where the vault is located in)'
     )
     parser.add_argument(
         '-l',
         '--log_file',
         default='uploaded_log.json',
-        help='logs the responses from Glacier (e.g. uploadId) in JSON format. Defaults to uploaded_log.json'
+        help='logs the responses from Glacier (e.g. archiveId) in JSON format. defaults to uploaded_log.json'
     )
     return parser
 
@@ -65,7 +65,7 @@ def main():
         )
     upload_args = {
         "path_to_file": settings.get("file"),
-        "part_size": settings.get("size"),        
+        "part_size": settings.get("part_size"),
         "description": settings.get("desc"),
     }
     if settings.get("multipart"):

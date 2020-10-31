@@ -22,21 +22,21 @@ Requires Python 3.6+ and uses pytest for the tests (needs to be installed if nee
 
 Currently can only be installed from an archive:
 
-`python -m pip install glacier-upload.zip`
+`python -m pip install glacier-upload-master.zip`
 
 ## Usage
 
 Basic usage (will upload in one chunk):
 
-`glacier-upload [upload_file_path] [glacier_vault_name]`
+`glacier-upload [file_path] [glacier_vault_name]`
 
 Giving description of what is uploaded (handy later on when downloading files)
 
-`glacier-upload -d "Description of the upload" [upload_file_path] [glacier_vault_name]`
+`glacier-upload -d "Description of the upload" [file_path] [glacier_vault_name]`
 
 Multipart upload (using -m flag and -s for part size in mb):
 
-`glacier-upload -m -s 4 [upload_file_path] [glacier_vault_name]`
+`glacier-upload -m -s 8 [file_path] [glacier_vault_name]`
 
 See more details with:
 
